@@ -91,12 +91,55 @@
 <div class="toast" id="toast"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
+const SUPABASE_URL = 'https://tqztpspwmivltleuzwpn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_hsT3mmwubVYgBMQmP0t0hA_MIVFqxyP';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const NGN = n => '\u20a6' + Number(n||0).toLocaleString('en-NG', {maximumFractionDigits:2});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
 let state = { products: [], sales: [], tab: 'pos', cart: [] };
 let pendingVariants = [];
+let session = null;
+let authError = '';
+
+async function handleLogin(){
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errEl = document.getElementById('login-error');
+  if (!email || !password) { errEl.textContent = 'Enter your email and password.'; return; }
+  errEl.textContent = 'Signing in...';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) { errEl.textContent = 'Could not sign in — check your email and password.'; return; }
+  session = data.session;
+  await loadState();
+}
+async function handleLogout(){
+  await sb.auth.signOut();
+  session = null;
+  renderLogin();
+}
+function renderLogin(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <header><div><h1>Shop POS</h1><div class="tag">Sign in to manage your shop</div></div></header>
+    <div class="card" style="max-width:360px; margin:40px auto 0;">
+      <h2 class="section">Owner sign in</h2>
+      <div class="field"><span class="field-label">Email</span><input id="login-email" type="email" placeholder="you@example.com"></div>
+      <div class="field"><span class="field-label">Password</span><input id="login-password" type="password" placeholder="Your password"></div>
+      <div id="login-error" style="color:var(--red); font-size:13px; margin-bottom:8px;"></div>
+      <button class="btn" style="width:100%;" onclick="handleLogin()">Sign in</button>
+    </div>
+  `;
+}
+
+async function initApp(){
+  const { data } = await sb.auth.getSession();
+  session = data.session;
+  if (session) { await loadState(); }
+  else { renderLogin(); }
+}
 
 function toast(msg){
   const t = document.getElementById('toast');
@@ -105,20 +148,52 @@ function toast(msg){
   setTimeout(()=>t.classList.remove('show'), 1800);
 }
 
+function rowToProduct(row){
+  return {
+    id: row.id, name: row.name, sku: row.sku, barcode: row.barcode || '',
+    category: row.category || 'General', price: Number(row.price), cost: Number(row.cost) || 0,
+    stock: row.stock || 0, reorder: row.reorder || 5,
+    hasVariants: !!row.has_variants, variants: row.variants || []
+  };
+}
+function rowToSale(row){
+  return { id: row.id, timestamp: row.created_at, items: row.items || [], total: Number(row.total), payment: row.payment };
+}
+
 async function loadState(){
   try {
-    const p = localStorage.getItem('shoppos_products');
-    state.products = p ? JSON.parse(p) : seedProducts();
-  } catch(e) { state.products = seedProducts(); }
-  try {
-    const s = localStorage.getItem('shoppos_sales');
-    state.sales = s ? JSON.parse(s) : [];
-  } catch(e) { state.sales = []; }
-  if (!state.products.length) {
-    state.products = seedProducts();
-    saveProducts();
+    let { data, error } = await sb.from('products').select('*').order('name');
+    if (error) throw error;
+    if (!data || !data.length) {
+      const seedRows = seedProducts().map(p => ({
+        name: p.name, sku: p.sku, barcode: p.barcode || null, category: p.category,
+        price: p.price, cost: p.cost, stock: p.hasVariants ? 0 : p.stock, reorder: p.reorder,
+        has_variants: p.hasVariants, variants: p.hasVariants ? p.variants : []
+      }));
+      const { data: inserted, error: insErr } = await sb.from('products').insert(seedRows).select();
+      if (insErr) throw insErr;
+      data = inserted;
+    }
+    state.products = data.map(rowToProduct);
+  } catch(e) {
+    toast('Could not connect to the database. Check your internet connection.');
+    state.products = [];
   }
+  try {
+    const { data, error } = await sb.from('sales').select('*').order('created_at', { ascending:false });
+    if (error) throw error;
+    state.sales = (data || []).map(rowToSale);
+  } catch(e) { state.sales = []; }
   render();
+}
+async function refreshProducts(){
+  try {
+    const { data, error } = await sb.from('products').select('*').order('name');
+    if (error) throw error;
+    state.products = data.map(rowToProduct);
+    render();
+    toast('Products refreshed');
+  } catch(e){ toast('Could not refresh — check your connection'); }
 }
 
 function seedProducts(){
@@ -135,14 +210,7 @@ function seedProducts(){
   ];
 }
 
-async function saveProducts(){
-  try { localStorage.setItem('shoppos_products', JSON.stringify(state.products)); }
-  catch(e){ toast('Could not save products'); }
-}
-async function saveSales(){
-  try { localStorage.setItem('shoppos_sales', JSON.stringify(state.sales)); }
-  catch(e){ toast('Could not save sale'); }
-}
+
 
 function setTab(t){ state.tab = t; render(); }
 
@@ -272,6 +340,7 @@ async function checkout(paymentMethod){
     const stock = item.variantId ? variantStock(prod, item.variantId) : prod.stock;
     if (!prod || stock < item.qty) { toast(`Not enough stock for ${item.name}`); return; }
   }
+  const touched = new Set();
   state.cart.forEach(item=>{
     const prod = state.products.find(p=>p.id===item.productId);
     if (item.variantId) {
@@ -280,19 +349,26 @@ async function checkout(paymentMethod){
     } else {
       prod.stock -= item.qty;
     }
+    touched.add(prod.id);
   });
-  const sale = {
-    id: uid(),
-    timestamp: new Date().toISOString(),
-    items: state.cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
-    total: cartTotal(),
-    payment: paymentMethod
-  };
-  state.sales.unshift(sale);
-  state.cart = [];
-  await saveProducts();
-  await saveSales();
-  toast('Sale recorded');
+  try {
+    for (const pid of touched) {
+      const prod = state.products.find(p=>p.id===pid);
+      const payload = prod.hasVariants ? { variants: prod.variants } : { stock: prod.stock };
+      const { error } = await sb.from('products').update(payload).eq('id', pid);
+      if (error) throw error;
+    }
+    const saleRow = {
+      items: state.cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
+      total: cartTotal(),
+      payment: paymentMethod
+    };
+    const { data, error } = await sb.from('sales').insert([saleRow]).select();
+    if (error) throw error;
+    state.sales.unshift(rowToSale(data[0]));
+    state.cart = [];
+    toast('Sale recorded');
+  } catch(e){ toast('Could not record sale — check your connection and try again.'); }
   render();
 }
 
@@ -334,29 +410,48 @@ function toggleVariantMode(checked){
 }
 
 async function addProduct(data){
-  state.products.push({ id: uid(), ...data });
-  await saveProducts();
-  pendingVariants = [];
-  render();
-  toast('Product added');
+  try {
+    const { data: rows, error } = await sb.from('products').insert([{
+      name: data.name, sku: data.sku, barcode: data.barcode || null, category: data.category,
+      price: data.price, cost: data.cost || 0, stock: data.hasVariants ? 0 : data.stock,
+      reorder: data.reorder || 5, has_variants: data.hasVariants,
+      variants: data.hasVariants ? data.variants : []
+    }]).select();
+    if (error) throw error;
+    state.products.push(rowToProduct(rows[0]));
+    pendingVariants = [];
+    render();
+    toast('Product added');
+  } catch(e){ toast('Could not add product — check your connection'); }
 }
 async function updateStock(productId, variantId, delta){
   const prod = state.products.find(p=>p.id===productId);
   if (!prod) return;
   if (variantId) {
     const v = prod.variants.find(x=>x.id===variantId);
-    if (v) v.stock = Math.max(0, v.stock + delta);
+    if (!v) return;
+    v.stock = Math.max(0, v.stock + delta);
+    try {
+      const { error } = await sb.from('products').update({ variants: prod.variants }).eq('id', productId);
+      if (error) throw error;
+    } catch(e){ toast('Could not update stock'); }
   } else {
     prod.stock = Math.max(0, prod.stock + delta);
+    try {
+      const { error } = await sb.from('products').update({ stock: prod.stock }).eq('id', productId);
+      if (error) throw error;
+    } catch(e){ toast('Could not update stock'); }
   }
-  await saveProducts();
   render();
 }
 async function deleteProduct(id){
-  state.products = state.products.filter(p=>p.id!==id);
-  await saveProducts();
-  render();
-  toast('Product removed');
+  try {
+    const { error } = await sb.from('products').delete().eq('id', id);
+    if (error) throw error;
+    state.products = state.products.filter(p=>p.id!==id);
+    render();
+    toast('Product removed');
+  } catch(e){ toast('Could not remove product'); }
 }
 
 function todaysSales(){
@@ -372,6 +467,7 @@ function render(){
         <h1>Shop POS</h1>
         <div class="tag">Point of sale &amp; inventory</div>
       </div>
+      <button class="btn secondary small" onclick="handleLogout()">Sign out</button>
     </header>
     <nav>
       <button class="${state.tab==='pos'?'active':''}" onclick="setTab('pos')">Sell</button>
@@ -432,6 +528,7 @@ function renderPOS(){
       <div class="row">
         <input id="barcode-input" placeholder="Scan or type a barcode, then press Enter" autocomplete="off">
         <button class="btn secondary" type="button" onclick="toggleCameraScan()">Scan with camera</button>
+        <button class="btn secondary" type="button" onclick="refreshProducts()">Refresh stock</button>
       </div>
       <div id="camera-scan-area" style="display:none; margin-top:10px;">
         <div id="reader" style="width:100%; max-width:320px;"></div>
@@ -625,8 +722,6 @@ function renderDashboard(){
 function escapeHtml(str){
   return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
 }
-
-loadState();
-</script>
+initApp();</script>
 </body>
 </html>
