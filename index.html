@@ -817,12 +817,21 @@ function renderOrders(){
   `;
 }
 async function updateOrderStatus(id, status){
+  const order = state.orders.find(x=>x.id===id);
+  const wasCompleted = order && order.status === 'completed';
   try {
     const { error } = await sb.from('orders').update({ status }).eq('id', id);
     if (error) throw error;
-    const o = state.orders.find(x=>x.id===id);
-    if (o) o.status = status;
-    toast('Order updated');
+    if (order) order.status = status;
+    if (status === 'completed' && !wasCompleted && order) {
+      const saleRow = { items: order.items, total: order.total, payment: 'Online' };
+      const { data: saleRows, error: saleErr } = await sb.from('sales').insert([saleRow]).select();
+      if (saleErr) throw saleErr;
+      state.sales.unshift(rowToSale(saleRows[0]));
+      toast('Order completed and added to sales');
+    } else {
+      toast('Order updated');
+    }
     render();
   } catch(e){ toast('Could not update order status'); }
 }

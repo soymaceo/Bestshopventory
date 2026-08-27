@@ -68,7 +68,7 @@ function escapeHtml(str){
 
 function rowToProduct(row){
   return {
-    id: row.id, name: row.name, price: Number(row.price), photoUrl: row.photo_url || '',
+    id: row.id, name: row.name, price: Number(row.price), cost: Number(row.cost) || 0, photoUrl: row.photo_url || '',
     stock: row.stock || 0, hasVariants: !!row.has_variants, variants: row.variants || []
   };
 }
@@ -99,7 +99,7 @@ function addToCart(productId, variantId){
     cart.push({
       key, productId, variantId: variantId || null,
       name: prod.name + (variant ? ' (' + variantLabel(variant) + ')' : ''),
-      price: prod.price, qty: 1
+      price: prod.price, cost: prod.cost || 0, qty: 1
     });
   }
   render();
@@ -146,7 +146,7 @@ async function placeOrder(name, phone){
       if (error) throw error;
     }
     const orderRow = {
-      items: cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
+      items: cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, cost:c.cost, qty:c.qty })),
       total: cartTotal(), customer_name: name, customer_phone: phone, status: 'pending'
     };
     const { data, error } = await sb.from('orders').insert([orderRow]).select();
