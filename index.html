@@ -511,6 +511,50 @@ function todaysSales(){
   return state.sales.filter(s => new Date(s.timestamp).toDateString() === today);
 }
 
+let notifiedLow = new Set();
+
+function notifyStatusLabel(){
+  if (typeof Notification === 'undefined') return 'Alerts unsupported';
+  if (Notification.permission === 'granted') return 'Stock alerts on';
+  if (Notification.permission === 'denied') return 'Alerts blocked';
+  return 'Enable stock alerts';
+}
+async function requestNotifyPermission(){
+  if (typeof Notification === 'undefined') { toast('This browser does not support alerts'); return; }
+  if (Notification.permission === 'denied') { toast('Alerts are blocked in your browser settings for this site'); return; }
+  const result = await Notification.requestPermission();
+  render();
+  if (result === 'granted') { toast('Stock alerts enabled'); checkLowStockAlerts(); }
+}
+function checkLowStockAlerts(){
+  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
+  state.products.forEach(p=>{
+    if (p.hasVariants) {
+      p.variants.forEach(v=>{
+        const key = p.id + ':' + v.id;
+        if (v.stock <= p.reorder) {
+          if (!notifiedLow.has(key)) {
+            notifiedLow.add(key);
+            new Notification('Low stock', { body: `${p.name} (${variantLabel(v)}) — ${v.stock} left` });
+          }
+        } else {
+          notifiedLow.delete(key);
+        }
+      });
+    } else {
+      const key = p.id;
+      if (p.stock <= p.reorder) {
+        if (!notifiedLow.has(key)) {
+          notifiedLow.add(key);
+          new Notification('Low stock', { body: `${p.name} — ${p.stock} left` });
+        }
+      } else {
+        notifiedLow.delete(key);
+      }
+    }
+  });
+}
+
 function render(){
   const app = document.getElementById('app');
   app.innerHTML = `
@@ -519,7 +563,10 @@ function render(){
         <h1>Shop POS</h1>
         <div class="tag">Point of sale &amp; inventory</div>
       </div>
-      <button class="btn secondary small" onclick="handleLogout()">Sign out</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn secondary small" onclick="requestNotifyPermission()" id="notify-btn">${notifyStatusLabel()}</button>
+        <button class="btn secondary small" onclick="handleLogout()">Sign out</button>
+      </div>
     </header>
     <nav>
       <button class="${state.tab==='pos'?'active':''}" onclick="setTab('pos')">Sell</button>
@@ -536,6 +583,7 @@ function render(){
   if (state.tab === 'orders') content.innerHTML = renderOrders();
   if (state.tab === 'sales') content.innerHTML = renderSales();
   if (state.tab === 'dashboard') content.innerHTML = renderDashboard();
+  checkLowStockAlerts();
 }
 
 function renderPOS(){
