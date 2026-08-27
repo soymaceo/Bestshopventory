@@ -1,0 +1,632 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shop POS</title>
+<style>
+  :root{
+    --ink:#16202E;
+    --ink-soft:#4A5568;
+    --line:#E4E1D6;
+    --bg:#EAF4FB;
+    --card:#FFFFFF;
+    --navy:#1B2A4A;
+    --navy-dark:#101A30;
+    --green:#2F6B4F;
+    --green-bg:#E7F3EC;
+    --red:#B3402F;
+    --red-bg:#FBEAE6;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background:var(--bg); color:var(--ink);
+  }
+  .wrap{max-width:960px; margin:0 auto; padding:16px 16px 80px;}
+  header{display:flex; align-items:center; justify-content:space-between; padding:14px 0 10px;}
+  header h1{font-size:19px; font-weight:700; margin:0; letter-spacing:-0.2px;}
+  header .tag{font-size:12px; color:var(--ink-soft);}
+  nav{display:flex; gap:6px; border-bottom:1px solid var(--line); margin-bottom:16px; overflow-x:auto;}
+  nav button{background:none; border:none; padding:10px 14px; font-size:14px; font-weight:600; color:var(--ink-soft); cursor:pointer; border-bottom:2px solid transparent; white-space:nowrap;}
+  nav button.active{color:var(--navy); border-bottom-color:var(--navy);}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:14px;}
+  .row{display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end;}
+  input, select{font-size:14px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; background:#fff; color:var(--ink); flex:1; min-width:100px;}
+  input:focus, select:focus{outline:2px solid var(--navy); outline-offset:1px;}
+  label.check{display:flex; align-items:center; gap:6px; font-size:13.5px; padding:6px 0;}
+  button.btn{font-size:14px; font-weight:600; padding:9px 16px; border-radius:8px; border:1px solid var(--navy); background:var(--navy); color:#fff; cursor:pointer;}
+  button.btn:hover{background:var(--navy-dark);}
+  button.btn.secondary{background:#fff; color:var(--navy); border:1px solid var(--line);}
+  button.btn.secondary:hover{border-color:var(--navy);}
+  button.btn.danger{background:#fff; color:var(--red); border:1px solid var(--red-bg);}
+  button.btn.danger:hover{background:var(--red-bg);}
+  button.btn.small{padding:5px 10px; font-size:12.5px;}
+  button.btn:disabled{opacity:0.45; cursor:not-allowed;}
+  table{width:100%; border-collapse:collapse; font-size:13.5px;}
+  th{text-align:left; color:var(--ink-soft); font-weight:600; padding:8px 6px; border-bottom:1px solid var(--line); font-size:12px; text-transform:uppercase; letter-spacing:0.3px;}
+  td{padding:9px 6px; border-bottom:1px solid var(--line); vertical-align:middle;}
+  tr.variant-row td{padding-left:18px; background:#FCFBF8;}
+  .stat-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  @media(min-width:600px){.stat-grid{grid-template-columns:repeat(4,1fr);}}
+  .stat{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px;}
+  .stat .label{font-size:12px; color:var(--ink-soft); margin-bottom:4px;}
+  .stat .value{font-size:20px; font-weight:700;}
+  .badge{display:inline-block; padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:600;}
+  .badge.low{background:var(--red-bg); color:var(--red);}
+  .badge.ok{background:var(--green-bg); color:var(--green);}
+  .pos-grid{display:grid; grid-template-columns:1fr; gap:14px;}
+  @media(min-width:760px){.pos-grid{grid-template-columns:1.3fr 1fr;}}
+  .product-block{border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px;}
+  .product-block .pname{font-weight:600; font-size:13.5px; margin-bottom:6px;}
+  .product-btn{text-align:left; background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px; cursor:pointer; display:flex; flex-direction:column; gap:2px; width:100%;}
+  .product-btn:hover{border-color:var(--navy);}
+  .product-btn .pname{font-weight:600; font-size:13.5px;}
+  .product-btn .pmeta{font-size:12px; color:var(--ink-soft);}
+  .variant-chip{background:#fff; border:1px solid var(--line); border-radius:6px; padding:6px 8px; cursor:pointer; font-size:12.5px; text-align:left;}
+  .variant-chip:hover{border-color:var(--navy);}
+  .variant-chip:disabled{opacity:0.4; cursor:not-allowed;}
+  .variant-chips{display:grid; grid-template-columns:repeat(2,1fr); gap:6px;}
+  .product-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:8px;}
+  @media(min-width:500px){.product-grid{grid-template-columns:repeat(3,1fr);}}
+  .cart-item{display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line); gap:8px;}
+  .cart-item .name{font-size:13.5px; font-weight:600;}
+  .cart-item .sub{font-size:12px; color:var(--ink-soft);}
+  .qty-ctrl{display:flex; align-items:center; gap:6px;}
+  .qty-ctrl button{width:26px; height:26px; border-radius:6px; border:1px solid var(--line); background:#fff; cursor:pointer; font-weight:700;}
+  .total-row{display:flex; justify-content:space-between; padding-top:10px; margin-top:6px; border-top:1px solid var(--line); font-weight:700; font-size:16px;}
+  .empty{color:var(--ink-soft); font-size:13.5px; padding:20px 0; text-align:center;}
+  .field-label{font-size:12px; color:var(--ink-soft); margin-bottom:3px; display:block;}
+  .field{display:flex; flex-direction:column; flex:1; min-width:100px;}
+  .toast{position:fixed; bottom:20px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; box-shadow:0 4px 14px rgba(0,0,0,0.18); z-index:50; opacity:0; transition:opacity 0.2s; pointer-events:none;}
+  .toast.show{opacity:1;}
+  h2.section{font-size:15px; margin:0 0 10px;}
+  .variant-builder{border-top:1px solid var(--line); margin-top:10px; padding-top:10px;}
+  .variant-list-item{display:flex; align-items:center; justify-content:space-between; padding:5px 8px; background:#FCFBF8; border:1px solid var(--line); border-radius:6px; margin-bottom:5px; font-size:13px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script>
+const NGN = n => '\u20a6' + Number(n||0).toLocaleString('en-NG', {maximumFractionDigits:2});
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+let state = { products: [], sales: [], tab: 'pos', cart: [] };
+let pendingVariants = [];
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 1800);
+}
+
+async function loadState(){
+  try {
+    const p = await window.storage.get('products');
+    state.products = p ? JSON.parse(p.value) : seedProducts();
+  } catch(e) { state.products = seedProducts(); }
+  try {
+    const s = await window.storage.get('sales');
+    state.sales = s ? JSON.parse(s.value) : [];
+  } catch(e) { state.sales = []; }
+  if (!state.products.length) {
+    state.products = seedProducts();
+    await saveProducts();
+  }
+  render();
+}
+
+function seedProducts(){
+  return [
+    { id: uid(), name:'Bag of Rice 50kg', sku:'RICE-50', barcode:'6001234500019', category:'Grains', price:65000, cost:58000, stock:12, reorder:3, hasVariants:false, variants:[] },
+    { id: uid(), name:'Vegetable Oil 5L', sku:'OIL-5L', barcode:'6001234500026', category:'Groceries', price:9500, cost:8200, stock:20, reorder:5, hasVariants:false, variants:[] },
+    { id: uid(), name:'Detergent 1kg', sku:'DET-1KG', barcode:'6001234500033', category:'Household', price:1800, cost:1300, stock:2, reorder:5, hasVariants:false, variants:[] },
+    { id: uid(), name:'Cotton T-Shirt', sku:'TSHIRT', barcode:'', category:'Fashion', price:6500, cost:4000, reorder:3, hasVariants:true, variants:[
+      { id: uid(), size:'S', color:'Black', sku:'TSHIRT-S-BLK-6001234500040', stock:8 },
+      { id: uid(), size:'M', color:'Black', sku:'TSHIRT-M-BLK-6001234500057', stock:10 },
+      { id: uid(), size:'M', color:'White', sku:'TSHIRT-M-WHT-6001234500064', stock:6 },
+      { id: uid(), size:'L', color:'White', sku:'TSHIRT-L-WHT-6001234500071', stock:1 },
+    ] },
+  ];
+}
+
+async function saveProducts(){
+  try { await window.storage.set('products', JSON.stringify(state.products)); }
+  catch(e){ toast('Could not save products'); }
+}
+async function saveSales(){
+  try { await window.storage.set('sales', JSON.stringify(state.sales)); }
+  catch(e){ toast('Could not save sale'); }
+}
+
+function setTab(t){ state.tab = t; render(); }
+
+function variantStock(prod, variantId){
+  const v = prod.variants.find(x=>x.id===variantId);
+  return v ? v.stock : 0;
+}
+function variantPrice(prod, variantId){
+  const v = prod.variants.find(x=>x.id===variantId);
+  return (v && v.priceOverride) ? v.priceOverride : prod.price;
+}
+function variantLabel(v){
+  return [v.size, v.color].filter(Boolean).join(' / ') || 'Default';
+}
+
+function cartKey(productId, variantId){ return productId + '::' + (variantId||''); }
+
+function findByBarcode(code){
+  const clean = code.trim();
+  if (!clean) return null;
+  for (const p of state.products) {
+    if (!p.hasVariants) {
+      if ((p.barcode && p.barcode === clean) || p.sku === clean) return { productId: p.id, variantId: null };
+    } else {
+      for (const v of p.variants) {
+        if (v.sku && v.sku === clean) return { productId: p.id, variantId: v.id };
+      }
+    }
+  }
+  return null;
+}
+
+function handleBarcodeSubmit(){
+  const input = document.getElementById('barcode-input');
+  if (!input) return;
+  const code = input.value.trim();
+  if (!code) return;
+  const feedback = document.getElementById('scan-feedback');
+  const match = findByBarcode(code);
+  if (match) {
+    addToCart(match.productId, match.variantId);
+    if (feedback) { feedback.textContent = 'Added from scan: ' + code; feedback.style.color = 'var(--green)'; }
+  } else {
+    if (feedback) { feedback.textContent = 'No product matches barcode ' + code; feedback.style.color = 'var(--red)'; }
+  }
+  input.value = '';
+  input.focus();
+}
+
+let cameraScanner = null;
+function toggleCameraScan(){
+  const area = document.getElementById('camera-scan-area');
+  if (!area) return;
+  if (area.style.display !== 'none') { stopCameraScan(); return; }
+  area.style.display = 'block';
+  const tryStart = (attemptsLeft) => {
+    if (typeof Html5Qrcode === 'undefined') {
+      if (attemptsLeft > 0) { setTimeout(()=>tryStart(attemptsLeft-1), 400); return; }
+      toast('Camera scanner failed to load. Use the manual scan box instead, or check your internet connection.');
+      area.style.display = 'none';
+      return;
+    }
+    cameraScanner = new Html5Qrcode('reader');
+    cameraScanner.start(
+      { facingMode: 'environment' },
+      { fps: 10, qrbox: 220 },
+      (decodedText) => {
+        const input = document.getElementById('barcode-input');
+        if (input) { input.value = decodedText; handleBarcodeSubmit(); }
+      },
+      () => {}
+    ).catch(() => { toast('Could not access the camera. If you opened this file directly, try hosting it or use the manual scan box.'); area.style.display = 'none'; });
+  };
+  tryStart(5);
+}
+function stopCameraScan(){
+  const area = document.getElementById('camera-scan-area');
+  if (cameraScanner) {
+    cameraScanner.stop().then(()=>{ cameraScanner.clear(); cameraScanner = null; }).catch(()=>{ cameraScanner = null; });
+  }
+  if (area) area.style.display = 'none';
+}
+function bindPOSExtras(){
+  const input = document.getElementById('barcode-input');
+  if (!input) return;
+  input.addEventListener('keydown', (e)=>{ if (e.key === 'Enter') { e.preventDefault(); handleBarcodeSubmit(); } });
+  input.focus();
+}
+
+function addToCart(productId, variantId){
+  const prod = state.products.find(p=>p.id===productId);
+  if (!prod) return;
+  const totalStock = variantId ? variantStock(prod, variantId) : prod.stock;
+  const key = cartKey(productId, variantId);
+  const inCart = state.cart.find(c=>c.key===key);
+  const remaining = totalStock - (inCart ? inCart.qty : 0);
+  if (remaining <= 0) { toast('Out of stock'); return; }
+  if (inCart) inCart.qty += 1;
+  else {
+    const variant = variantId ? prod.variants.find(v=>v.id===variantId) : null;
+    state.cart.push({
+      key, productId, variantId: variantId || null,
+      name: prod.name + (variant ? ' (' + variantLabel(variant) + ')' : ''),
+      price: variantId ? variantPrice(prod, variantId) : prod.price,
+      qty: 1
+    });
+  }
+  render();
+}
+function changeQty(key, delta){
+  const item = state.cart.find(c=>c.key===key);
+  if (!item) return;
+  const prod = state.products.find(p=>p.id===item.productId);
+  const stock = item.variantId ? variantStock(prod, item.variantId) : prod.stock;
+  const newQty = item.qty + delta;
+  if (newQty <= 0) { state.cart = state.cart.filter(c=>c.key!==key); render(); return; }
+  if (delta > 0 && newQty > stock) { toast('Not enough stock'); return; }
+  item.qty = newQty;
+  render();
+}
+function cartTotal(){ return state.cart.reduce((s,c)=>s+c.price*c.qty,0); }
+
+async function checkout(paymentMethod){
+  if (!state.cart.length) { toast('Cart is empty'); return; }
+  for (const item of state.cart) {
+    const prod = state.products.find(p=>p.id===item.productId);
+    const stock = item.variantId ? variantStock(prod, item.variantId) : prod.stock;
+    if (!prod || stock < item.qty) { toast(`Not enough stock for ${item.name}`); return; }
+  }
+  state.cart.forEach(item=>{
+    const prod = state.products.find(p=>p.id===item.productId);
+    if (item.variantId) {
+      const v = prod.variants.find(x=>x.id===item.variantId);
+      v.stock -= item.qty;
+    } else {
+      prod.stock -= item.qty;
+    }
+  });
+  const sale = {
+    id: uid(),
+    timestamp: new Date().toISOString(),
+    items: state.cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
+    total: cartTotal(),
+    payment: paymentMethod
+  };
+  state.sales.unshift(sale);
+  state.cart = [];
+  await saveProducts();
+  await saveSales();
+  toast('Sale recorded');
+  render();
+}
+
+function addPendingVariant(){
+  const size = document.getElementById('v-size').value.trim();
+  const color = document.getElementById('v-color').value.trim();
+  const stock = Number(document.getElementById('v-stock').value);
+  const barcode = document.getElementById('v-barcode').value.trim();
+  const errEl = document.getElementById('variant-error');
+  if ((!size && !color) || isNaN(stock) || stock < 0) {
+    errEl.textContent = 'Enter a size or colour, and a valid stock number.';
+    return;
+  }
+  errEl.textContent = '';
+  pendingVariants.push({ id: uid(), size, color, sku: barcode, stock });
+  document.getElementById('v-size').value = '';
+  document.getElementById('v-color').value = '';
+  document.getElementById('v-stock').value = '';
+  document.getElementById('v-barcode').value = '';
+  renderPendingVariants();
+}
+function removePendingVariant(id){
+  pendingVariants = pendingVariants.filter(v=>v.id!==id);
+  renderPendingVariants();
+}
+function renderPendingVariants(){
+  const el = document.getElementById('pending-variant-list');
+  if (!el) return;
+  el.innerHTML = pendingVariants.map(v=>`
+    <div class="variant-list-item">
+      <span>${escapeHtml(variantLabel(v))} &middot; stock ${v.stock}</span>
+      <button type="button" class="btn danger small" onclick="removePendingVariant('${v.id}')">Remove</button>
+    </div>
+  `).join('') || '<div style="font-size:12.5px;color:var(--ink-soft);">No variants added yet.</div>';
+}
+function toggleVariantMode(checked){
+  document.getElementById('variant-builder').style.display = checked ? 'block' : 'none';
+  document.getElementById('single-stock-field').style.display = checked ? 'none' : 'flex';
+}
+
+async function addProduct(data){
+  state.products.push({ id: uid(), ...data });
+  await saveProducts();
+  pendingVariants = [];
+  render();
+  toast('Product added');
+}
+async function updateStock(productId, variantId, delta){
+  const prod = state.products.find(p=>p.id===productId);
+  if (!prod) return;
+  if (variantId) {
+    const v = prod.variants.find(x=>x.id===variantId);
+    if (v) v.stock = Math.max(0, v.stock + delta);
+  } else {
+    prod.stock = Math.max(0, prod.stock + delta);
+  }
+  await saveProducts();
+  render();
+}
+async function deleteProduct(id){
+  state.products = state.products.filter(p=>p.id!==id);
+  await saveProducts();
+  render();
+  toast('Product removed');
+}
+
+function todaysSales(){
+  const today = new Date().toDateString();
+  return state.sales.filter(s => new Date(s.timestamp).toDateString() === today);
+}
+
+function render(){
+  const app = document.getElementById('app');
+  app.innerHTML = `
+    <header>
+      <div>
+        <h1>Shop POS</h1>
+        <div class="tag">Point of sale &amp; inventory</div>
+      </div>
+    </header>
+    <nav>
+      <button class="${state.tab==='pos'?'active':''}" onclick="setTab('pos')">Sell</button>
+      <button class="${state.tab==='inventory'?'active':''}" onclick="setTab('inventory')">Inventory</button>
+      <button class="${state.tab==='sales'?'active':''}" onclick="setTab('sales')">Sales history</button>
+      <button class="${state.tab==='dashboard'?'active':''}" onclick="setTab('dashboard')">Dashboard</button>
+    </nav>
+    <div id="tab-content"></div>
+  `;
+  const content = document.getElementById('tab-content');
+  if (state.tab === 'pos') { content.innerHTML = renderPOS(); bindPOSExtras(); }
+  if (state.tab === 'inventory') { content.innerHTML = renderInventory(); bindInventoryForm(); renderPendingVariants(); }
+  if (state.tab === 'sales') content.innerHTML = renderSales();
+  if (state.tab === 'dashboard') content.innerHTML = renderDashboard();
+}
+
+function renderPOS(){
+  const blocks = state.products.map(p=>{
+    if (!p.hasVariants) {
+      return `
+        <button class="product-btn" onclick="addToCart('${p.id}', null)" ${p.stock<=0?'disabled':''}>
+          <span class="pname">${escapeHtml(p.name)}</span>
+          <span class="pmeta">${NGN(p.price)} &middot; ${p.stock} in stock</span>
+        </button>
+      `;
+    }
+    const chips = p.variants.map(v=>`
+      <button class="variant-chip" onclick="addToCart('${p.id}','${v.id}')" ${v.stock<=0?'disabled':''}>
+        ${escapeHtml(variantLabel(v))}<br><span style="color:var(--ink-soft)">${NGN(variantPrice(p,v.id))} &middot; ${v.stock} left</span>
+      </button>
+    `).join('');
+    return `
+      <div class="product-block">
+        <div class="pname">${escapeHtml(p.name)}</div>
+        <div class="variant-chips">${chips}</div>
+      </div>
+    `;
+  }).join('') || '<div class="empty">No products yet. Add some in Inventory.</div>';
+
+  const cartItems = state.cart.map(c=>`
+    <div class="cart-item">
+      <div>
+        <div class="name">${escapeHtml(c.name)}</div>
+        <div class="sub">${NGN(c.price)} each</div>
+      </div>
+      <div class="qty-ctrl">
+        <button onclick="changeQty('${c.key}',-1)" aria-label="Decrease">-</button>
+        <span>${c.qty}</span>
+        <button onclick="changeQty('${c.key}',1)" aria-label="Increase">+</button>
+      </div>
+      <div style="font-weight:600; min-width:70px; text-align:right;">${NGN(c.price*c.qty)}</div>
+    </div>
+  `).join('') || '<div class="empty">Cart is empty. Tap a product to add it.</div>';
+
+  return `
+    <div class="card">
+      <h2 class="section">Scan barcode</h2>
+      <div class="row">
+        <input id="barcode-input" placeholder="Scan or type a barcode, then press Enter" autocomplete="off">
+        <button class="btn secondary" type="button" onclick="toggleCameraScan()">Scan with camera</button>
+      </div>
+      <div id="camera-scan-area" style="display:none; margin-top:10px;">
+        <div id="reader" style="width:100%; max-width:320px;"></div>
+        <button class="btn danger small" style="margin-top:8px;" type="button" onclick="stopCameraScan()">Stop camera</button>
+      </div>
+      <div id="scan-feedback" style="font-size:13px; margin-top:6px;"></div>
+    </div>
+    <div class="pos-grid">
+      <div class="card">
+        <h2 class="section">Products</h2>
+        <div>${blocks}</div>
+      </div>
+      <div class="card">
+        <h2 class="section">Cart</h2>
+        <div>${cartItems}</div>
+        <div class="total-row"><span>Total</span><span>${NGN(cartTotal())}</span></div>
+        <div class="row" style="margin-top:12px;">
+          <button class="btn" style="flex:1" onclick="checkout('Cash')" ${!state.cart.length?'disabled':''}>Cash</button>
+          <button class="btn secondary" style="flex:1" onclick="checkout('Transfer')" ${!state.cart.length?'disabled':''}>Transfer</button>
+          <button class="btn secondary" style="flex:1" onclick="checkout('Card')" ${!state.cart.length?'disabled':''}>Card</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderInventory(){
+  const rows = state.products.map(p=>{
+    const mainRow = `
+      <tr>
+        <td>${escapeHtml(p.name)}<div style="font-size:11.5px;color:var(--ink-soft)">${escapeHtml(p.sku)} &middot; ${escapeHtml(p.category)}${p.hasVariants ? ' &middot; ' + p.variants.length + ' variants' : ''}</div></td>
+        <td>${NGN(p.price)}</td>
+        <td>${p.hasVariants ? '&mdash;' : `
+          <div class="qty-ctrl">
+            <button onclick="updateStock('${p.id}',null,-1)" aria-label="Decrease stock">-</button>
+            <span>${p.stock}</span>
+            <button onclick="updateStock('${p.id}',null,1)" aria-label="Increase stock">+</button>
+          </div>`}</td>
+        <td>${p.hasVariants
+          ? (p.variants.some(v=>v.stock<=p.reorder) ? '<span class="badge low">Low stock</span>' : '<span class="badge ok">OK</span>')
+          : (p.stock <= p.reorder ? '<span class="badge low">Low stock</span>' : '<span class="badge ok">OK</span>')}</td>
+        <td><button class="btn danger small" onclick="deleteProduct('${p.id}')">Remove</button></td>
+      </tr>
+    `;
+    const variantRows = p.hasVariants ? p.variants.map(v=>`
+      <tr class="variant-row">
+        <td colspan="2">${escapeHtml(variantLabel(v))}</td>
+        <td>
+          <div class="qty-ctrl">
+            <button onclick="updateStock('${p.id}','${v.id}',-1)" aria-label="Decrease stock">-</button>
+            <span>${v.stock}</span>
+            <button onclick="updateStock('${p.id}','${v.id}',1)" aria-label="Increase stock">+</button>
+          </div>
+        </td>
+        <td>${v.stock <= p.reorder ? '<span class="badge low">Low</span>' : '<span class="badge ok">OK</span>'}</td>
+        <td></td>
+      </tr>
+    `).join('') : '';
+    return mainRow + variantRows;
+  }).join('') || `<tr><td colspan="5" class="empty">No products yet.</td></tr>`;
+
+  return `
+    <div class="card">
+      <h2 class="section">Add a product</h2>
+      <form id="product-form" class="row">
+        <div class="field"><span class="field-label">Name</span><input required name="name" placeholder="e.g. Cotton T-Shirt"></div>
+        <div class="field"><span class="field-label">SKU</span><input required name="sku" placeholder="e.g. TSHIRT"></div>
+        <div class="field"><span class="field-label">Barcode (optional)</span><input name="barcode" placeholder="Scan or type barcode"></div>
+        <div class="field"><span class="field-label">Category</span><input name="category" placeholder="e.g. Fashion"></div>
+        <div class="field"><span class="field-label">Selling price</span><input required name="price" type="number" min="0" step="1" placeholder="0"></div>
+        <div class="field"><span class="field-label">Cost price</span><input name="cost" type="number" min="0" step="1" placeholder="0"></div>
+        <div class="field" id="single-stock-field"><span class="field-label">Stock</span><input name="stock" type="number" min="0" step="1" placeholder="0"></div>
+        <div class="field"><span class="field-label">Reorder level</span><input name="reorder" type="number" min="0" step="1" placeholder="5"></div>
+      </form>
+      <label class="check"><input type="checkbox" id="variant-toggle" onchange="toggleVariantMode(this.checked)"> This product has size / colour variants</label>
+      <div id="variant-builder" class="variant-builder" style="display:none;">
+        <div class="row">
+          <div class="field"><span class="field-label">Size</span><input id="v-size" placeholder="e.g. M"></div>
+          <div class="field"><span class="field-label">Colour</span><input id="v-color" placeholder="e.g. Black"></div>
+          <div class="field"><span class="field-label">Stock</span><input id="v-stock" type="number" min="0" step="1" placeholder="0"></div>
+          <div class="field"><span class="field-label">Barcode (optional)</span><input id="v-barcode" placeholder="Scan or type barcode"></div>
+          <button type="button" class="btn secondary" onclick="addPendingVariant()">Add variant</button>
+        </div>
+        <div id="variant-error" style="color:var(--red); font-size:13px; margin:4px 0;"></div>
+        <div id="pending-variant-list" style="margin-top:8px;"></div>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn" type="submit" form="product-form">Add product</button>
+      </div>
+      <div id="form-error" style="color:var(--red); font-size:13px; margin-top:8px;"></div>
+    </div>
+    <div class="card">
+      <h2 class="section">Products (${state.products.length})</h2>
+      <table>
+        <thead><tr><th>Product</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function bindInventoryForm(){
+  const form = document.getElementById('product-form');
+  if (!form) return;
+  form.addEventListener('submit', async (e)=>{
+    e.preventDefault();
+    const fd = new FormData(form);
+    const name = fd.get('name').trim();
+    const sku = fd.get('sku').trim();
+    const price = Number(fd.get('price'));
+    const hasVariants = document.getElementById('variant-toggle').checked;
+    const errEl = document.getElementById('form-error');
+    if (!name || !sku || isNaN(price) || price < 0) {
+      errEl.textContent = 'Enter a valid name, SKU and price.';
+      return;
+    }
+    if (hasVariants) {
+      if (!pendingVariants.length) {
+        errEl.textContent = 'Add at least one variant, or uncheck the variants option.';
+        return;
+      }
+    } else {
+      const stock = Number(fd.get('stock'));
+      if (isNaN(stock) || stock < 0) {
+        errEl.textContent = 'Enter a valid stock number.';
+        return;
+      }
+    }
+    errEl.textContent = '';
+    await addProduct({
+      name, sku,
+      barcode: fd.get('barcode').trim(),
+      category: fd.get('category').trim() || 'General',
+      price, cost: Number(fd.get('cost')) || 0,
+      reorder: Number(fd.get('reorder')) || 5,
+      hasVariants,
+      stock: hasVariants ? 0 : Number(fd.get('stock')),
+      variants: hasVariants ? pendingVariants.map(v=>({...v})) : []
+    });
+  });
+}
+
+function renderSales(){
+  const rows = state.sales.map(s=>`
+    <tr>
+      <td>${new Date(s.timestamp).toLocaleString('en-NG',{dateStyle:'medium',timeStyle:'short'})}</td>
+      <td>${s.items.map(i=>`${escapeHtml(i.name)} x${i.qty}`).join(', ')}</td>
+      <td>${escapeHtml(s.payment)}</td>
+      <td style="font-weight:600;">${NGN(s.total)}</td>
+    </tr>
+  `).join('') || `<tr><td colspan="4" class="empty">No sales recorded yet.</td></tr>`;
+  return `
+    <div class="card">
+      <h2 class="section">Sales history</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Items</th><th>Payment</th><th>Total</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function renderDashboard(){
+  const today = todaysSales();
+  const todayTotal = today.reduce((s,x)=>s+x.total,0);
+  const allTotal = state.sales.reduce((s,x)=>s+x.total,0);
+  const lowStock = [];
+  state.products.forEach(p=>{
+    if (p.hasVariants) {
+      p.variants.forEach(v=>{ if (v.stock<=p.reorder) lowStock.push({ name: p.name+' ('+variantLabel(v)+')', stock:v.stock, reorder:p.reorder }); });
+    } else if (p.stock<=p.reorder) {
+      lowStock.push({ name:p.name, stock:p.stock, reorder:p.reorder });
+    }
+  });
+  return `
+    <div class="stat-grid">
+      <div class="stat"><div class="label">Today's sales</div><div class="value">${NGN(todayTotal)}</div></div>
+      <div class="stat"><div class="label">Today's transactions</div><div class="value">${today.length}</div></div>
+      <div class="stat"><div class="label">All-time revenue</div><div class="value">${NGN(allTotal)}</div></div>
+      <div class="stat"><div class="label">Low stock items</div><div class="value">${lowStock.length}</div></div>
+    </div>
+    <div class="card" style="margin-top:14px;">
+      <h2 class="section">Needs reordering</h2>
+      ${lowStock.length ? `<table><thead><tr><th>Product</th><th>Stock</th><th>Reorder level</th></tr></thead><tbody>${
+        lowStock.map(p=>`<tr><td>${escapeHtml(p.name)}</td><td>${p.stock}</td><td>${p.reorder}</td></tr>`).join('')
+      }</tbody></table>` : '<div class="empty">Everything is stocked.</div>'}
+    </div>
+  `;
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+loadState();
+</script>
+</body>
+</html>
