@@ -152,7 +152,7 @@ function rowToProduct(row){
   return {
     id: row.id, name: row.name, sku: row.sku, barcode: row.barcode || '',
     category: row.category || 'General', price: Number(row.price), cost: Number(row.cost) || 0,
-    stock: row.stock || 0, reorder: row.reorder || 5,
+    stock: row.stock || 0, reorder: row.reorder || 5, photoUrl: row.photo_url || '',
     hasVariants: !!row.has_variants, variants: row.variants || []
   };
 }
@@ -418,6 +418,19 @@ function toggleVariantMode(checked){
   document.getElementById('single-stock-field').style.display = checked ? 'none' : 'flex';
 }
 
+async function uploadPhotoIfSelected(){
+  const input = document.getElementById('photo-input');
+  if (!input || !input.files || !input.files[0]) return null;
+  const file = input.files[0];
+  const path = `${Date.now()}-${file.name.replace(/[^a-zA-Z0-9.\-]/g,'_')}`;
+  try {
+    const { error } = await sb.storage.from('product-images').upload(path, file);
+    if (error) throw error;
+    const { data } = sb.storage.from('product-images').getPublicUrl(path);
+    return data.publicUrl;
+  } catch(e) { toast('Photo upload failed — product saved without it'); return null; }
+}
+
 function editProduct(id){
   const p = state.products.find(x=>x.id===id);
   if (!p) return;
@@ -436,7 +449,7 @@ async function updateProductCore(id, data){
       name: data.name, sku: data.sku, barcode: data.barcode || null, category: data.category,
       price: data.price, cost: data.cost || 0, reorder: data.reorder || 5,
       has_variants: data.hasVariants, variants: data.hasVariants ? data.variants : [],
-      stock: data.hasVariants ? 0 : data.stock
+      stock: data.hasVariants ? 0 : data.stock, photo_url: data.photoUrl || null
     };
     const { data: rows, error } = await sb.from('products').update(payload).eq('id', id).select();
     if (error) throw error;
@@ -454,7 +467,7 @@ async function addProduct(data){
       name: data.name, sku: data.sku, barcode: data.barcode || null, category: data.category,
       price: data.price, cost: data.cost || 0, stock: data.hasVariants ? 0 : data.stock,
       reorder: data.reorder || 5, has_variants: data.hasVariants,
-      variants: data.hasVariants ? data.variants : []
+      variants: data.hasVariants ? data.variants : [], photo_url: data.photoUrl || null
     }]).select();
     if (error) throw error;
     state.products.push(rowToProduct(rows[0]));
@@ -530,6 +543,7 @@ function renderPOS(){
     if (!p.hasVariants) {
       return `
         <button class="product-btn" onclick="addToCart('${p.id}', null)" ${p.stock<=0?'disabled':''}>
+          ${p.photoUrl ? `<img src="${escapeHtml(p.photoUrl)}" alt="" style="width:100%;height:70px;object-fit:cover;border-radius:6px;margin-bottom:4px;">` : ''}
           <span class="pname">${escapeHtml(p.name)}</span>
           <span class="pmeta">${NGN(p.price)} &middot; ${p.stock} in stock</span>
         </button>
@@ -649,7 +663,9 @@ function renderInventory(){
         <div class="field"><span class="field-label">Cost price</span><input name="cost" type="number" min="0" step="1" placeholder="0" value="${editing ? editing.cost : ''}"></div>
         <div class="field" id="single-stock-field" style="display:${editing && editing.hasVariants ? 'none' : 'flex'};"><span class="field-label">Stock</span><input name="stock" type="number" min="0" step="1" placeholder="0" value="${editing && !editing.hasVariants ? editing.stock : ''}"></div>
         <div class="field"><span class="field-label">Reorder level</span><input name="reorder" type="number" min="0" step="1" placeholder="5" value="${editing ? editing.reorder : ''}"></div>
+        <div class="field"><span class="field-label">Photo (optional)</span><input id="photo-input" type="file" accept="image/*"></div>
       </form>
+      ${editing && editing.photoUrl ? `<img src="${escapeHtml(editing.photoUrl)}" alt="" style="width:64px;height:64px;object-fit:cover;border-radius:6px;border:1px solid var(--line);margin-top:6px;">` : ''}
       <label class="check"><input type="checkbox" id="variant-toggle" ${editing && editing.hasVariants ? 'checked' : ''} onchange="toggleVariantMode(this.checked)"> This product has size / colour variants</label>
       <div id="variant-builder" class="variant-builder" style="display:${editing && editing.hasVariants ? 'block' : 'none'};">
         <div class="row">
@@ -706,6 +722,7 @@ function bindInventoryForm(){
       }
     }
     errEl.textContent = '';
+    const uploadedUrl = await uploadPhotoIfSelected();
     const payload = {
       name, sku,
       barcode: fd.get('barcode').trim(),
@@ -714,7 +731,8 @@ function bindInventoryForm(){
       reorder: Number(fd.get('reorder')) || 5,
       hasVariants,
       stock: hasVariants ? 0 : Number(fd.get('stock')),
-      variants: hasVariants ? pendingVariants.map(v=>({...v})) : []
+      variants: hasVariants ? pendingVariants.map(v=>({...v})) : [],
+      photoUrl: uploadedUrl || (state.editingProductId ? (state.products.find(p=>p.id===state.editingProductId)?.photoUrl || '') : '')
     };
     if (state.editingProductId) {
       await updateProductCore(state.editingProductId, payload);
