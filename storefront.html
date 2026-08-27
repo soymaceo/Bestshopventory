@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shop</title>
+<style>
+  :root{
+    --ink:#16202E; --ink-soft:#4A5568; --line:#E4E1D6; --bg:#EAF4FB; --card:#FFFFFF;
+    --navy:#1B2A4A; --navy-dark:#101A30; --green:#2F6B4F; --green-bg:#E7F3EC;
+    --red:#B3402F; --red-bg:#FBEAE6; --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0; font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:var(--bg); color:var(--ink);}
+  .wrap{max-width:720px; margin:0 auto; padding:16px 16px 100px;}
+  header{padding:16px 0 6px;}
+  header h1{font-size:20px; font-weight:700; margin:0;}
+  header .tag{font-size:13px; color:var(--ink-soft);}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:16px; margin-bottom:14px;}
+  .product-grid{display:grid; grid-template-columns:repeat(2,1fr); gap:10px;}
+  @media(min-width:520px){.product-grid{grid-template-columns:repeat(3,1fr);}}
+  .product-card{border:1px solid var(--line); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px;}
+  .product-card .pname{font-weight:600; font-size:13.5px;}
+  .product-card .pmeta{font-size:12px; color:var(--ink-soft);}
+  select{font-size:13px; padding:6px; border:1px solid var(--line); border-radius:6px;}
+  button.btn{font-size:14px; font-weight:600; padding:9px 16px; border-radius:8px; border:1px solid var(--navy); background:var(--navy); color:#fff; cursor:pointer;}
+  button.btn:hover{background:var(--navy-dark);}
+  button.btn.small{padding:6px 10px; font-size:12.5px;}
+  button.btn:disabled{opacity:0.45; cursor:not-allowed;}
+  input{font-size:14px; padding:9px 10px; border:1px solid var(--line); border-radius:8px; width:100%;}
+  .field{margin-bottom:10px;}
+  .field-label{font-size:12px; color:var(--ink-soft); margin-bottom:3px; display:block;}
+  .cart-bar{position:sticky; bottom:0; background:var(--card); border-top:1px solid var(--line); padding:12px 16px; display:flex; justify-content:space-between; align-items:center; border-radius:var(--radius) var(--radius) 0 0; box-shadow:0 -2px 10px rgba(0,0,0,0.05);}
+  .cart-item{display:flex; align-items:center; justify-content:space-between; padding:8px 0; border-bottom:1px solid var(--line); gap:8px;}
+  .empty{color:var(--ink-soft); font-size:13.5px; padding:20px 0; text-align:center;}
+  .badge.low{background:var(--red-bg); color:var(--red); padding:2px 8px; border-radius:20px; font-size:11.5px; font-weight:600;}
+  .toast{position:fixed; bottom:70px; left:50%; transform:translateX(-50%); background:var(--navy); color:#fff; padding:10px 18px; border-radius:8px; font-size:13.5px; z-index:50; opacity:0; transition:opacity 0.2s; pointer-events:none;}
+  .toast.show{opacity:1;}
+  h2.section{font-size:15px; margin:0 0 10px;}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://tqztpspwmivltleuzwpn.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_hsT3mmwubVYgBMQmP0t0hA_MIVFqxyP';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const NGN = n => '\u20a6' + Number(n||0).toLocaleString('en-NG', {maximumFractionDigits:2});
+
+let products = [];
+let cart = [];
+let view = 'shop';
+let lastOrderRef = '';
+
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2000);
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function rowToProduct(row){
+  return {
+    id: row.id, name: row.name, price: Number(row.price),
+    stock: row.stock || 0, hasVariants: !!row.has_variants, variants: row.variants || []
+  };
+}
+
+async function loadProducts(){
+  try {
+    const { data, error } = await sb.from('products').select('*').order('name');
+    if (error) throw error;
+    products = data.map(rowToProduct);
+  } catch(e) { toast('Could not load products — check your connection'); products = []; }
+  render();
+}
+
+function variantLabel(v){ return [v.size, v.color].filter(Boolean).join(' / ') || 'Default'; }
+function cartKey(productId, variantId){ return productId + '::' + (variantId||''); }
+
+function addToCart(productId, variantId){
+  const prod = products.find(p=>p.id===productId);
+  if (!prod) return;
+  const stock = variantId ? (prod.variants.find(v=>v.id===variantId)?.stock || 0) : prod.stock;
+  const key = cartKey(productId, variantId);
+  const existing = cart.find(c=>c.key===key);
+  const remaining = stock - (existing ? existing.qty : 0);
+  if (remaining <= 0) { toast('Out of stock'); return; }
+  if (existing) existing.qty += 1;
+  else {
+    const variant = variantId ? prod.variants.find(v=>v.id===variantId) : null;
+    cart.push({
+      key, productId, variantId: variantId || null,
+      name: prod.name + (variant ? ' (' + variantLabel(variant) + ')' : ''),
+      price: prod.price, qty: 1
+    });
+  }
+  render();
+}
+function changeQty(key, delta){
+  const item = cart.find(c=>c.key===key);
+  if (!item) return;
+  const prod = products.find(p=>p.id===item.productId);
+  const stock = item.variantId ? (prod.variants.find(v=>v.id===item.variantId)?.stock || 0) : prod.stock;
+  const newQty = item.qty + delta;
+  if (newQty <= 0) { cart = cart.filter(c=>c.key!==key); render(); return; }
+  if (delta > 0 && newQty > stock) { toast('Not enough stock'); return; }
+  item.qty = newQty;
+  render();
+}
+function cartTotal(){ return cart.reduce((s,c)=>s+c.price*c.qty,0); }
+function cartCount(){ return cart.reduce((s,c)=>s+c.qty,0); }
+
+function goToCheckout(){ if (!cart.length) { toast('Your cart is empty'); return; } view = 'checkout'; render(); }
+function backToShop(){ view = 'shop'; render(); }
+
+async function placeOrder(name, phone){
+  for (const item of cart) {
+    const prod = products.find(p=>p.id===item.productId);
+    const stock = item.variantId ? (prod.variants.find(v=>v.id===item.variantId)?.stock || 0) : prod.stock;
+    if (!prod || stock < item.qty) { toast(`${item.name} is no longer available in that quantity`); return; }
+  }
+  const touched = new Set();
+  cart.forEach(item=>{
+    const prod = products.find(p=>p.id===item.productId);
+    if (item.variantId) {
+      const v = prod.variants.find(x=>x.id===item.variantId);
+      v.stock -= item.qty;
+    } else {
+      prod.stock -= item.qty;
+    }
+    touched.add(prod.id);
+  });
+  try {
+    for (const pid of touched) {
+      const prod = products.find(p=>p.id===pid);
+      const payload = prod.hasVariants ? { variants: prod.variants } : { stock: prod.stock };
+      const { error } = await sb.from('products').update(payload).eq('id', pid);
+      if (error) throw error;
+    }
+    const orderRow = {
+      items: cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
+      total: cartTotal(), customer_name: name, customer_phone: phone, status: 'pending'
+    };
+    const { data, error } = await sb.from('orders').insert([orderRow]).select();
+    if (error) throw error;
+    lastOrderRef = data[0].id.slice(0,8).toUpperCase();
+    cart = [];
+    view = 'confirmed';
+    render();
+  } catch(e){ toast('Could not place order — check your connection and try again.'); }
+}
+
+function render(){
+  const app = document.getElementById('app');
+  if (view === 'confirmed') { renderConfirmed(app); return; }
+  if (view === 'checkout') { renderCheckout(app); return; }
+  renderShop(app);
+}
+
+function renderShop(app){
+  const blocks = products.map(p=>{
+    if (!p.hasVariants) {
+      const low = p.stock <= 0;
+      return `
+        <div class="product-card">
+          <div class="pname">${escapeHtml(p.name)}</div>
+          <div class="pmeta">${NGN(p.price)}</div>
+          ${low ? '<span class="badge low">Out of stock</span>' : `<button class="btn small" onclick="addToCart('${p.id}', null)">Add to cart</button>`}
+        </div>
+      `;
+    }
+    const options = p.variants.map(v=>`<option value="${v.id}" ${v.stock<=0?'disabled':''}>${escapeHtml(variantLabel(v))} ${v.stock<=0?'(out of stock)':''}</option>`).join('');
+    return `
+      <div class="product-card">
+        <div class="pname">${escapeHtml(p.name)}</div>
+        <div class="pmeta">${NGN(p.price)}</div>
+        <select id="variant-${p.id}">${options}</select>
+        <button class="btn small" onclick="addToCart('${p.id}', document.getElementById('variant-${p.id}').value)">Add to cart</button>
+      </div>
+    `;
+  }).join('') || '<div class="empty">No products available right now.</div>';
+
+  app.innerHTML = `
+    <header>
+      <h1>Shop</h1>
+      <div class="tag">Order online, pick up or pay on delivery</div>
+    </header>
+    <div class="card">
+      <h2 class="section">Products</h2>
+      <div class="product-grid">${blocks}</div>
+    </div>
+    ${cart.length ? `
+      <div class="cart-bar">
+        <span>${cartCount()} item${cartCount()===1?'':'s'} &middot; ${NGN(cartTotal())}</span>
+        <button class="btn" onclick="goToCheckout()">View cart</button>
+      </div>
+    ` : ''}
+  `;
+}
+
+function renderCheckout(app){
+  const items = cart.map(c=>`
+    <div class="cart-item">
+      <div>
+        <div style="font-weight:600; font-size:13.5px;">${escapeHtml(c.name)}</div>
+        <div style="font-size:12px; color:var(--ink-soft);">${NGN(c.price)} each</div>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <button class="btn small" onclick="changeQty('${c.key}',-1)">-</button>
+        <span>${c.qty}</span>
+        <button class="btn small" onclick="changeQty('${c.key}',1)">+</button>
+      </div>
+      <div style="font-weight:600;">${NGN(c.price*c.qty)}</div>
+    </div>
+  `).join('');
+
+  app.innerHTML = `
+    <header><h1>Your order</h1></header>
+    <div class="card">
+      ${items}
+      <div style="display:flex; justify-content:space-between; font-weight:700; font-size:16px; padding-top:10px; margin-top:6px; border-top:1px solid var(--line);">
+        <span>Total</span><span>${NGN(cartTotal())}</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2 class="section">Your details</h2>
+      <div class="field"><span class="field-label">Full name</span><input id="cust-name" placeholder="Your name"></div>
+      <div class="field"><span class="field-label">Phone number</span><input id="cust-phone" placeholder="For delivery / pickup confirmation"></div>
+      <div id="checkout-error" style="color:var(--red); font-size:13px; margin-bottom:8px;"></div>
+      <div style="display:flex; gap:10px;">
+        <button class="btn" style="background:#fff; color:var(--navy); border:1px solid var(--line);" onclick="backToShop()">Back to shop</button>
+        <button class="btn" onclick="submitOrder()">Place order</button>
+      </div>
+    </div>
+  `;
+}
+
+function submitOrder(){
+  const name = document.getElementById('cust-name').value.trim();
+  const phone = document.getElementById('cust-phone').value.trim();
+  const errEl = document.getElementById('checkout-error');
+  if (!name || !phone) { errEl.textContent = 'Enter your name and phone number.'; return; }
+  errEl.textContent = '';
+  placeOrder(name, phone);
+}
+
+function renderConfirmed(app){
+  app.innerHTML = `
+    <header><h1>Order placed</h1></header>
+    <div class="card">
+      <p>Thanks — your order reference is <strong>${escapeHtml(lastOrderRef)}</strong>.</p>
+      <p style="color:var(--ink-soft); font-size:13.5px;">The shop will contact you to confirm payment and delivery or pickup.</p>
+      <button class="btn" onclick="backToShopAndReload()">Continue shopping</button>
+    </div>
+  `;
+}
+function backToShopAndReload(){ view = 'shop'; loadProducts(); }
+
+loadProducts();
+</script>
+</body>
+</html>
