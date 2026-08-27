@@ -324,6 +324,7 @@ function addToCart(productId, variantId){
       key, productId, variantId: variantId || null,
       name: prod.name + (variant ? ' (' + variantLabel(variant) + ')' : ''),
       price: variantId ? variantPrice(prod, variantId) : prod.price,
+      cost: prod.cost || 0,
       qty: 1
     });
   }
@@ -368,7 +369,7 @@ async function checkout(paymentMethod){
       if (error) throw error;
     }
     const saleRow = {
-      items: state.cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, qty:c.qty })),
+      items: state.cart.map(c=>({ productId:c.productId, variantId:c.variantId, name:c.name, price:c.price, cost:c.cost, qty:c.qty })),
       total: cartTotal(),
       payment: paymentMethod
     };
@@ -826,6 +827,10 @@ async function updateOrderStatus(id, status){
   } catch(e){ toast('Could not update order status'); }
 }
 
+function saleProfit(sale){
+  return sale.items.reduce((s,i)=>s + ((i.price - (i.cost||0)) * i.qty), 0);
+}
+
 function renderSales(){
   const rows = state.sales.map(s=>`
     <tr>
@@ -833,13 +838,14 @@ function renderSales(){
       <td>${s.items.map(i=>`${escapeHtml(i.name)} x${i.qty}`).join(', ')}</td>
       <td>${escapeHtml(s.payment)}</td>
       <td style="font-weight:600;">${NGN(s.total)}</td>
+      <td style="color:var(--green);">${NGN(saleProfit(s))}</td>
     </tr>
-  `).join('') || `<tr><td colspan="4" class="empty">No sales recorded yet.</td></tr>`;
+  `).join('') || `<tr><td colspan="5" class="empty">No sales recorded yet.</td></tr>`;
   return `
     <div class="card">
       <h2 class="section">Sales history</h2>
       <table>
-        <thead><tr><th>Date</th><th>Items</th><th>Payment</th><th>Total</th></tr></thead>
+        <thead><tr><th>Date</th><th>Items</th><th>Payment</th><th>Total</th><th>Profit</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
@@ -849,7 +855,9 @@ function renderSales(){
 function renderDashboard(){
   const today = todaysSales();
   const todayTotal = today.reduce((s,x)=>s+x.total,0);
+  const todayProfit = today.reduce((s,x)=>s+saleProfit(x),0);
   const allTotal = state.sales.reduce((s,x)=>s+x.total,0);
+  const allProfit = state.sales.reduce((s,x)=>s+saleProfit(x),0);
   const lowStock = [];
   state.products.forEach(p=>{
     if (p.hasVariants) {
@@ -862,9 +870,11 @@ function renderDashboard(){
   return `
     <div class="stat-grid">
       <div class="stat"><div class="label">Today's sales</div><div class="value">${NGN(todayTotal)}</div></div>
-      <div class="stat"><div class="label">Today's transactions</div><div class="value">${today.length}</div></div>
+      <div class="stat"><div class="label">Today's profit</div><div class="value">${NGN(todayProfit)}</div></div>
       <div class="stat"><div class="label">All-time revenue</div><div class="value">${NGN(allTotal)}</div></div>
+      <div class="stat"><div class="label">All-time profit</div><div class="value">${NGN(allProfit)}</div></div>
       <div class="stat"><div class="label">Pending online orders</div><div class="value">${pendingOrders}</div></div>
+      <div class="stat"><div class="label">Low stock items</div><div class="value">${lowStock.length}</div></div>
     </div>
     <div class="card" style="margin-top:14px;">
       <h2 class="section">Needs reordering</h2>
