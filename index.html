@@ -99,7 +99,7 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 const NGN = n => '\u20a6' + Number(n||0).toLocaleString('en-NG', {maximumFractionDigits:2});
 const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
 
-let state = { products: [], sales: [], orders: [], tab: 'pos', cart: [] };
+let state = { products: [], sales: [], orders: [], tab: 'pos', cart: [], editingProductId: null };
 let pendingVariants = [];
 let session = null;
 let authError = '';
@@ -418,6 +418,36 @@ function toggleVariantMode(checked){
   document.getElementById('single-stock-field').style.display = checked ? 'none' : 'flex';
 }
 
+function editProduct(id){
+  const p = state.products.find(x=>x.id===id);
+  if (!p) return;
+  state.editingProductId = id;
+  pendingVariants = p.variants.map(v=>({...v}));
+  render();
+}
+function cancelEdit(){
+  state.editingProductId = null;
+  pendingVariants = [];
+  render();
+}
+async function updateProductCore(id, data){
+  try {
+    const payload = {
+      name: data.name, sku: data.sku, barcode: data.barcode || null, category: data.category,
+      price: data.price, cost: data.cost || 0, reorder: data.reorder || 5,
+      has_variants: data.hasVariants, variants: data.hasVariants ? data.variants : [],
+      stock: data.hasVariants ? 0 : data.stock
+    };
+    const { data: rows, error } = await sb.from('products').update(payload).eq('id', id).select();
+    if (error) throw error;
+    const idx = state.products.findIndex(p=>p.id===id);
+    if (idx >= 0) state.products[idx] = rowToProduct(rows[0]);
+    state.editingProductId = null;
+    pendingVariants = [];
+    render();
+    toast('Product updated');
+  } catch(e){ toast('Could not update product — check your connection'); }
+}
 async function addProduct(data){
   try {
     const { data: rows, error } = await sb.from('products').insert([{
@@ -581,7 +611,10 @@ function renderInventory(){
         <td>${p.hasVariants
           ? (p.variants.some(v=>v.stock<=p.reorder) ? '<span class="badge low">Low stock</span>' : '<span class="badge ok">OK</span>')
           : (p.stock <= p.reorder ? '<span class="badge low">Low stock</span>' : '<span class="badge ok">OK</span>')}</td>
-        <td><button class="btn danger small" onclick="deleteProduct('${p.id}')">Remove</button></td>
+        <td>
+          <button class="btn secondary small" onclick="editProduct('${p.id}')">Edit</button>
+          <button class="btn danger small" onclick="deleteProduct('${p.id}')">Remove</button>
+        </td>
       </tr>
     `;
     const variantRows = p.hasVariants ? p.variants.map(v=>`
@@ -601,21 +634,24 @@ function renderInventory(){
     return mainRow + variantRows;
   }).join('') || `<tr><td colspan="5" class="empty">No products yet.</td></tr>`;
 
+  const editing = state.editingProductId ? state.products.find(p=>p.id===state.editingProductId) : null;
+  const val = (field, fallback) => editing ? escapeHtml(String(editing[field] ?? fallback ?? '')) : (fallback ?? '');
+
   return `
     <div class="card">
-      <h2 class="section">Add a product</h2>
+      <h2 class="section">${editing ? 'Edit product' : 'Add a product'}</h2>
       <form id="product-form" class="row">
-        <div class="field"><span class="field-label">Name</span><input required name="name" placeholder="e.g. Cotton T-Shirt"></div>
-        <div class="field"><span class="field-label">SKU</span><input required name="sku" placeholder="e.g. TSHIRT"></div>
-        <div class="field"><span class="field-label">Barcode (optional)</span><input name="barcode" placeholder="Scan or type barcode"></div>
-        <div class="field"><span class="field-label">Category</span><input name="category" placeholder="e.g. Fashion"></div>
-        <div class="field"><span class="field-label">Selling price</span><input required name="price" type="number" min="0" step="1" placeholder="0"></div>
-        <div class="field"><span class="field-label">Cost price</span><input name="cost" type="number" min="0" step="1" placeholder="0"></div>
-        <div class="field" id="single-stock-field"><span class="field-label">Stock</span><input name="stock" type="number" min="0" step="1" placeholder="0"></div>
-        <div class="field"><span class="field-label">Reorder level</span><input name="reorder" type="number" min="0" step="1" placeholder="5"></div>
+        <div class="field"><span class="field-label">Name</span><input required name="name" placeholder="e.g. Cotton T-Shirt" value="${val('name')}"></div>
+        <div class="field"><span class="field-label">SKU</span><input required name="sku" placeholder="e.g. TSHIRT" value="${val('sku')}"></div>
+        <div class="field"><span class="field-label">Barcode (optional)</span><input name="barcode" placeholder="Scan or type barcode" value="${val('barcode')}"></div>
+        <div class="field"><span class="field-label">Category</span><input name="category" placeholder="e.g. Fashion" value="${val('category')}"></div>
+        <div class="field"><span class="field-label">Selling price</span><input required name="price" type="number" min="0" step="1" placeholder="0" value="${editing ? editing.price : ''}"></div>
+        <div class="field"><span class="field-label">Cost price</span><input name="cost" type="number" min="0" step="1" placeholder="0" value="${editing ? editing.cost : ''}"></div>
+        <div class="field" id="single-stock-field" style="display:${editing && editing.hasVariants ? 'none' : 'flex'};"><span class="field-label">Stock</span><input name="stock" type="number" min="0" step="1" placeholder="0" value="${editing && !editing.hasVariants ? editing.stock : ''}"></div>
+        <div class="field"><span class="field-label">Reorder level</span><input name="reorder" type="number" min="0" step="1" placeholder="5" value="${editing ? editing.reorder : ''}"></div>
       </form>
-      <label class="check"><input type="checkbox" id="variant-toggle" onchange="toggleVariantMode(this.checked)"> This product has size / colour variants</label>
-      <div id="variant-builder" class="variant-builder" style="display:none;">
+      <label class="check"><input type="checkbox" id="variant-toggle" ${editing && editing.hasVariants ? 'checked' : ''} onchange="toggleVariantMode(this.checked)"> This product has size / colour variants</label>
+      <div id="variant-builder" class="variant-builder" style="display:${editing && editing.hasVariants ? 'block' : 'none'};">
         <div class="row">
           <div class="field"><span class="field-label">Size</span><input id="v-size" placeholder="e.g. M"></div>
           <div class="field"><span class="field-label">Colour</span><input id="v-color" placeholder="e.g. Black"></div>
@@ -626,8 +662,9 @@ function renderInventory(){
         <div id="variant-error" style="color:var(--red); font-size:13px; margin:4px 0;"></div>
         <div id="pending-variant-list" style="margin-top:8px;"></div>
       </div>
-      <div style="margin-top:12px;">
-        <button class="btn" type="submit" form="product-form">Add product</button>
+      <div style="margin-top:12px; display:flex; gap:10px;">
+        <button class="btn" type="submit" form="product-form">${editing ? 'Save changes' : 'Add product'}</button>
+        ${editing ? '<button class="btn secondary" type="button" onclick="cancelEdit()">Cancel</button>' : ''}
       </div>
       <div id="form-error" style="color:var(--red); font-size:13px; margin-top:8px;"></div>
     </div>
@@ -669,7 +706,7 @@ function bindInventoryForm(){
       }
     }
     errEl.textContent = '';
-    await addProduct({
+    const payload = {
       name, sku,
       barcode: fd.get('barcode').trim(),
       category: fd.get('category').trim() || 'General',
@@ -678,7 +715,12 @@ function bindInventoryForm(){
       hasVariants,
       stock: hasVariants ? 0 : Number(fd.get('stock')),
       variants: hasVariants ? pendingVariants.map(v=>({...v})) : []
-    });
+    };
+    if (state.editingProductId) {
+      await updateProductCore(state.editingProductId, payload);
+    } else {
+      await addProduct(payload);
+    }
   });
 }
 
